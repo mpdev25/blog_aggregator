@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/mpdev25//blog_aggregator/internal/config"
+	"github.com/mpdev25/pokedexcli/blog_aggregator/internal/config"
 )
 
 func main() {
