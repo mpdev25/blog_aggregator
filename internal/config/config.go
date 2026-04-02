@@ -2,13 +2,14 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
 
 type Config struct {
-	DBURL           string //`json:"db_url"`
-	CurrentUserName string //`json:"current_user_name"`
+	DBURL           string `json:"db_url"`
+	CurrentUserName string `json:"current_user_name"`
 }
 
 type State struct {
@@ -44,6 +45,7 @@ func Read() (Config, error) {
 	c := Config{}
 	err = decoder.Decode(&c)
 	if err != nil {
+		fmt.Printf("Error decoding JSON: %v\n", err)
 		return Config{}, err
 	}
 	return c, nil
@@ -54,6 +56,11 @@ func (c *Config) SetUser(userName string) error {
 	c.CurrentUserName = userName
 	return write(*c)
 
+}
+
+func (c *Config) SetDatabaseURL(DBURL string) error {
+	c.DBURL = DBURL
+	return write(*c)
 }
 
 func write(c Config) error {

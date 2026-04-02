@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log"
+
+	"github.com/mpdev25/pokedexcli/blog_aggregator/internal/config"
 )
 
 type State struct {
-	Config *struct {
-		CurrentUserName string
-	}
+	Config *config.Config
 }
 
 type Command struct {
@@ -24,11 +25,25 @@ func HandlerLogin(s *State, cmd Command) error {
 		return fmt.Errorf("login failed: expected a single argument (username), but got %d", len(cmd.Args))
 	}
 	username := cmd.Args[0]
-	if s.Config == nil {
-		s.Config = &struct{ CurrentUserName string }{}
+
+	if err := s.Config.SetUser(username); err != nil {
+		log.Printf("Failed to set user to %s: %v", username, err)
+		return fmt.Errorf("user configuration failed: %w", err)
 	}
-	s.Config.CurrentUserName = username
+
 	fmt.Println("Username has been set to:", s.Config.CurrentUserName)
+	return nil
+}
+
+func HandlerSetDB(s *State, cmd Command) error {
+	if len(cmd.Args) != 1 {
+		return fmt.Errorf("usage: %s <db_url>", cmd.Name)
+	}
+	dbURL := cmd.Args[0]
+	if err := s.Config.SetDatabaseURL(dbURL); err != nil {
+		return fmt.Errorf("failed to set database URL: %w", err)
+	}
+	fmt.Printf("Database URL has been updated to: %s\n", dbURL)
 	return nil
 }
 
