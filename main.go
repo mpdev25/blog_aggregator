@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,14 +16,15 @@ import (
 	"github.com/mpdev25/pokedexcli/blog_aggregator/internal/database"
 )
 
-type state struct {
-	db  *database.Queries
-	cfg *config.Config
+type State struct {
+	db     *database.Queries
+	Config *config.Config
 }
 
-func registerHandler(s *state, cmd string, args []string) error {
+func registerHandler(s *State, cmd Command) error {
+	args := cmd.Args
 	if len(args) == 0 {
-		return fmt.Errorf("usage: %s <name>", cmd)
+		return fmt.Errorf("usage: %s <name>", cmd.Name)
 	}
 	name := args[0]
 	user, err := s.db.CreateUser(context.Background(), database.CreateUserParams{
@@ -32,9 +34,14 @@ func registerHandler(s *state, cmd string, args []string) error {
 		Name:      name,
 	})
 	if err != nil {
+		if strings.Contains(err.Error(), "23505") || strings.Contains(err.Error(), "unique constraint") { //"duplicate key value violates unique constraint") {
+			fmt.Fprintf(os.Stderr, "Error: user already exists\n")
+			os.Exit(1)
+		}
+
 		return fmt.Errorf("could not create user %s: %w", name, err)
 	}
-	err = s.cfg.SetUser(name)
+	err = s.Config.SetUser(name)
 	if err != nil {
 		return fmt.Errorf("could not set user: %w", err)
 	}
@@ -58,10 +65,15 @@ func main() {
 
 	appState := &State{
 		Config: &cfg,
+		db:     database.New(db),
 	}
 	cmdRegistry := NewCommands()
 	cmdRegistry.Register("login", HandlerLogin)
 	cmdRegistry.Register("setdb", HandlerSetDB)
+	cmdRegistry.Register("register", registerHandler)
+	cmdRegistry.Register("reset", Reset)
+	cmdRegistry.Register("users", users)
+	cmdRegistry.Register("agg", Agg)
 
 	if len(os.Args) < 2 {
 		fmt.Fprintf(os.Stderr, "Error: missing command name\n")
@@ -75,9 +87,13 @@ func main() {
 		Args: commandArgs,
 	}
 	if err := cmdRegistry.Run(appState, cmdInstance); err != nil {
-		fmt.Printf("Command failed: %V\n", err)
-		os.Exit(1)
-
+		//fmt.Printf("Command failed: %v\n", err)
+		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+			fmt.Fprintf(os.Stderr, "Error: user already exists\n")
+			os.Exit(1)
+		}
+		//os.Exit(1)
+		log.Fatalf("Command failed: %v\n", err)
 	}
 
 	fmt.Printf("\nFinal state after command execution: %+v\n", appState.Config)
