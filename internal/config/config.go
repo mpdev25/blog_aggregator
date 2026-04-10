@@ -12,10 +12,6 @@ type Config struct {
 	CurrentUserName string `json:"current_user_name"`
 }
 
-//type State struct {
-//	Config *Config
-//}
-
 const configFileName = ".gatorconfig.json"
 
 func GetConfigPath() (string, error) {

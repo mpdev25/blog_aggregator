@@ -3,8 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/mpdev25/pokedexcli/blog_aggregator/internal/database"
 )
 
 //type State struct {
@@ -97,14 +104,71 @@ func (c *Commands) Register(name string, f func(*State, Command) error) {
 }
 
 func Agg(s *State, cmd Command) error {
-	feedURL := "https://www.wagslane.dev/index.xml"
-	for _, URL := range os.Args[1] {
-		if err != nil {
-			fmt.Errorf("unable to retrieve url %v\n", err)
-		}
+	resp, err := http.Get("https://www.wagslane.dev/index.xml")
+
+	if err != nil {
+		return fmt.Errorf("unable to retrieve url %v\n", err)
 	}
-	if len(os.Args) > 1 {
-		fmt.Println("", os.Args[1])
+
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	fmt.Println(string(body))
+
+	return nil
+}
+
+func addfeed(s *State, cmd Command) error {
+	if len(cmd.Args) < 2 {
+		return fmt.Errorf("usage: %s addfeed <name> <url>", cmd.Name)
+	}
+	if s.Config.CurrentUserName == "" {
+		return fmt.Errorf("you must be logged in to add a feed")
+	}
+	user, err := s.db.GetUser(context.Background(), s.Config.CurrentUserName)
+	if err != nil {
+		return fmt.Errorf("could not find current user: %w", err)
+	}
+	feed, err := s.db.CreateFeeds(context.Background(), database.CreateFeedsParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Name:      cmd.Args[0],
+		Url:       cmd.Args[1],
+		UserID:    user.ID,
+	})
+
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "unique violation") {
+			return fmt.Errorf("feed with name '%s' or URL '%s' already exists", cmd.Args[0], cmd.Args[1])
+		}
+		return fmt.Errorf("failed to add feed: %w", err)
+	}
+	fmt.Printf("Feed '%s' added successfully\n", feed.Name)
+	return nil
+}
+
+func feeds(s *State, cmd Command) error {
+	feeds, err := s.db.GetFeeds(context.Background())
+	if err != nil {
+		return fmt.Errorf("could not get feeds: %w", err)
+	}
+
+	for _, feed := range feeds {
+		fmt.Printf("* %s\n", feed.Name)
+		fmt.Printf(" - URL: %s\n", feed.Url)
+		fmt.Printf(" - Created by: %s\n", feed.UserName)
+	}
+	return nil
+}
+
+func follow(s *State, cmd Command) error {
+	feeds, err := s.db.FollowFeed(context.Background())
+	if err != nil {
+		return fmt.Errorf("could not get feeds: %w", err)
+	}
+	for _, feed := range feeds {
+		fmt.Printf("* %s\n", feed.Name)
+		fmt.Printf("- linked user: %s\n", s.Config.CurrentUserName)
 	}
 	return nil
 }

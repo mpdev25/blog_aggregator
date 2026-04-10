@@ -74,6 +74,9 @@ func main() {
 	cmdRegistry.Register("reset", Reset)
 	cmdRegistry.Register("users", users)
 	cmdRegistry.Register("agg", Agg)
+	cmdRegistry.Register("addfeed", addfeed)
+	cmdRegistry.Register("feeds", feeds)
+	cmdRegistry.Register("follow", follow)
 
 	if len(os.Args) < 2 {
 		fmt.Fprintf(os.Stderr, "Error: missing command name\n")
@@ -96,5 +99,5 @@ func main() {
 		log.Fatalf("Command failed: %v\n", err)
 	}
 
-	fmt.Printf("\nFinal state after command execution: %+v\n", appState.Config)
+	//fmt.Printf("\nFinal state after command execution: %+v\n", appState.Config)
 }
