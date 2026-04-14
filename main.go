@@ -74,9 +74,11 @@ func main() {
 	cmdRegistry.Register("reset", Reset)
 	cmdRegistry.Register("users", users)
 	cmdRegistry.Register("agg", Agg)
-	cmdRegistry.Register("addfeed", addfeed)
+	cmdRegistry.Register("addfeed", middlewareLoggedIn(addfeed))
 	cmdRegistry.Register("feeds", feeds)
-	cmdRegistry.Register("follow", follow)
+	cmdRegistry.Register("following", middlewareLoggedIn(following))
+	cmdRegistry.Register("follow", middlewareLoggedIn(follow))
+	cmdRegistry.Register("unfollow", middlewareLoggedIn(unfollow))
 
 	if len(os.Args) < 2 {
 		fmt.Fprintf(os.Stderr, "Error: missing command name\n")

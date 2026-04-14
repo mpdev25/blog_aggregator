@@ -5,12 +5,12 @@ CREATE TABLE feed_follows (
     updated_at TIMESTAMP NOT NULL,
     user_id UUID NOT NULL,
     feed_id UUID NOT NULL,
-    CONSTRAINT fk_user
-    FOREIGN KEY(user_name)
-    REFERENCES users(name)
+    CONSTRAINT fk_user_follow
+    FOREIGN KEY(user_id)
+    REFERENCES users(id)
     ON DELETE CASCADE,
-    CONSTRAINT fk_feed
-    FOREIGN KEY(feeds_id)
+    CONSTRAINT fk_feed_follow
+    FOREIGN KEY(feed_id)
     REFERENCES feeds(id)
     ON DELETE CASCADE,
     UNIQUE(user_id, feed_id)

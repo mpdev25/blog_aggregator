@@ -7,10 +7,12 @@ id UUID PRIMARY KEY,
     url TEXT NOT NULL UNIQUE,
     user_id UUID NOT NULL,
     CONSTRAINT fk_user
-    FOREIGN KEY(user_name)
-    REFERENCES users(name)
+    FOREIGN KEY(user_id)
+    REFERENCES users(id)
     ON DELETE CASCADE
 );
 
 -- +goose DOWN
 DROP TABLE feeds;
+
+

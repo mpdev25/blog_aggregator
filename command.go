@@ -143,6 +143,18 @@ func addfeed(s *State, cmd Command) error {
 		}
 		return fmt.Errorf("failed to add feed: %w", err)
 	}
+
+	_, err = s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		UserID:    user.ID,
+		FeedID:    feed.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("feed added, but failed to follow automatically: %w", err)
+	}
+
 	fmt.Printf("Feed '%s' added successfully\n", feed.Name)
 	return nil
 }
@@ -162,14 +174,76 @@ func feeds(s *State, cmd Command) error {
 }
 
 func follow(s *State, cmd Command) error {
-	feeds, err := s.db.FollowFeed(context.Background())
+	if len(cmd.Args) != 1 {
+		return fmt.Errorf("usage: %s <url>", cmd.Name)
+	}
+	url := cmd.Args[0]
+	if s.Config.CurrentUserName == "" {
+		return fmt.Errorf("you must be logged in to follow a feed")
+	}
+	user, err := s.db.GetUser(context.Background(), s.Config.CurrentUserName)
 	if err != nil {
-		return fmt.Errorf("could not get feeds: %w", err)
+		return fmt.Errorf("could not get user: %w", err)
 	}
-	for _, feed := range feeds {
-		fmt.Printf("* %s\n", feed.Name)
-		fmt.Printf("- linked user: %s\n", s.Config.CurrentUserName)
+	feed, err := s.db.GetFeedByURL(context.Background(), url)
+	if err != nil {
+		return fmt.Errorf("could not find feed with URL %s: %w", url, err)
 	}
+	follow, err := s.db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		UserID:    user.ID,
+		FeedID:    feed.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("could not follow feed: %w", err)
+	}
+	fmt.Printf("User '%s' is now following feed '%s'\n", follow.UserName, follow.FeedName)
+	return nil
+
+}
+func following(s *State, cmd Command) error {
+	if s.Config.CurrentUserName == "" {
+		return fmt.Errorf("you must be logged in to follow a feed")
+	}
+
+	follows, err := s.db.GetFeedFollowsForUser(context.Background(), s.Config.CurrentUserName) //user.ID.String())
+	if err != nil {
+		return fmt.Errorf("could not retrieve feeds: %w", err)
+	}
+	fmt.Printf("Feed follows for user '%s':\n", s.Config.CurrentUserName)
+	for _, follow := range follows {
+		fmt.Printf("* %s\n", follow.FeedName)
+	}
+	return nil
+}
+
+func unfollow(s *State, cmd Command) error {
+	if len(cmd.Args) != 1 {
+		return fmt.Errorf("usage: %s <url>", cmd.Name)
+	}
+	url := cmd.Args[0]
+	if s.Config.CurrentUserName == "" {
+		return fmt.Errorf("you must be logged in to unfollow a feed")
+	}
+	user, err := s.db.GetUser(context.Background(), s.Config.CurrentUserName)
+	if err != nil {
+		return fmt.Errorf("could not get user: %w", err)
+	}
+	feed, err := s.db.GetFeedByURL(context.Background(), url)
+	if err != nil {
+		return fmt.Errorf("could not find feed with URL %s: %w", url, err)
+	}
+
+	err = s.db.Delete_Feed_Follow(context.Background(), database.Delete_Feed_FollowParams{
+		UserID: user.ID,
+		FeedID: feed.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("could not unfollow feed: %w", err)
+	}
+	fmt.Printf("User '%s' is noo longer following feed '%s'\n", user.Name, feed.Url)
 	return nil
 }
 
