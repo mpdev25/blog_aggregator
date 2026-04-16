@@ -2,10 +2,9 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -13,10 +12,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/mpdev25/pokedexcli/blog_aggregator/internal/database"
 )
-
-//type State struct {
-//	Config *config.Config
-//}
 
 type Command struct {
 	Name string
@@ -104,17 +99,29 @@ func (c *Commands) Register(name string, f func(*State, Command) error) {
 }
 
 func Agg(s *State, cmd Command) error {
-	resp, err := http.Get("https://www.wagslane.dev/index.xml")
+	//resp, err := http.Get("https://www.wagslane.dev/index.xml")
+	//	resp, err := http.Get("https://news.ycombinator.com/rss")
+	//	if err != nil {
+	//		return fmt.Errorf("unable to retrieve url %v\n", err)
+	//	}
 
+	//	defer resp.Body.Close()
+	//	body, _ := io.ReadAll(resp.Body)
+	//	fmt.Println(string(body))
+	if len(cmd.Args) < 1 || len(cmd.Args) > 2 {
+		return fmt.Errorf("usage: %s <time_between_reqs>", cmd.Name)
+	}
+	time_between_reqs, err := time.ParseDuration(cmd.Args[0])
 	if err != nil {
-		return fmt.Errorf("unable to retrieve url %v\n", err)
+		return fmt.Errorf("invalid duration: %v", err)
+	}
+	fmt.Printf("Collecting feeds every %s ...\n", time_between_reqs)
+	ticker := time.NewTicker(time_between_reqs)
+	//scrapeFeeds(s)
+	for ; ; <-ticker.C {
+		scrapeFeeds(s)
 	}
 
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	fmt.Println(string(body))
-
-	return nil
 }
 
 func addfeed(s *State, cmd Command) error {
@@ -244,6 +251,55 @@ func unfollow(s *State, cmd Command) error {
 		return fmt.Errorf("could not unfollow feed: %w", err)
 	}
 	fmt.Printf("User '%s' is noo longer following feed '%s'\n", user.Name, feed.Url)
+	return nil
+}
+
+func scrapeFeeds(s *State) error {
+	feed, err := s.db.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		return fmt.Errorf("could not find next feed: %w", err)
+	}
+	_, err = s.db.MarkFeedFetched(context.Background(), feed.ID)
+	if err != nil {
+		return fmt.Errorf("could not mark feed as fetched: %w", err)
+	}
+
+	feedData, err := fetchFeed(context.Background(), feed.Url)
+
+	if err != nil {
+		return fmt.Errorf("could not parse feed %s: %w", feed.Url, err)
+	}
+	for _, item := range feedData.Channel.Item {
+		publishedAt, _ := time.Parse(time.RFC1123Z, item.PubDate)
+		_, err := s.db.CreatePost(context.Background(), database.CreatePostParams{
+			ID:        uuid.New(),
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			Title: sql.NullString{
+				String: item.Title,
+				Valid:  item.Title != "",
+			},
+			Url: item.Link,
+
+			Description: sql.NullString{
+				String: item.Description,
+				Valid:  item.Description != "",
+			},
+			PublishedAt: sql.NullTime{
+				Time:  publishedAt,
+				Valid: !publishedAt.IsZero(),
+			},
+			FeedID: feed.ID,
+		})
+		if err != nil {
+			if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+				continue
+			}
+			log.Printf("Database error saving post: %v", err)
+		}
+		fmt.Printf("Description: %s", item.Description)
+	}
+
 	return nil
 }
 
