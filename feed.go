@@ -9,6 +9,7 @@ import (
 )
 
 type RSSFeed struct {
+	XMLName xml.Name `xml:"rss"`
 	Channel struct {
 		Title       string    `xml:"title"`
 		Link        string    `xml:"link"`

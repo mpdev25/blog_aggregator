@@ -34,7 +34,7 @@ func registerHandler(s *State, cmd Command) error {
 		Name:      name,
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "23505") || strings.Contains(err.Error(), "unique constraint") { //"duplicate key value violates unique constraint") {
+		if strings.Contains(err.Error(), "23505") || strings.Contains(err.Error(), "unique constraint") {
 			fmt.Fprintf(os.Stderr, "Error: user already exists\n")
 			os.Exit(1)
 		}
@@ -79,6 +79,7 @@ func main() {
 	cmdRegistry.Register("following", middlewareLoggedIn(following))
 	cmdRegistry.Register("follow", middlewareLoggedIn(follow))
 	cmdRegistry.Register("unfollow", middlewareLoggedIn(unfollow))
+	cmdRegistry.Register("browse", middlewareLoggedIn(browse))
 
 	if len(os.Args) < 2 {
 		fmt.Fprintf(os.Stderr, "Error: missing command name\n")
@@ -92,14 +93,13 @@ func main() {
 		Args: commandArgs,
 	}
 	if err := cmdRegistry.Run(appState, cmdInstance); err != nil {
-		//fmt.Printf("Command failed: %v\n", err)
+
 		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
 			fmt.Fprintf(os.Stderr, "Error: user already exists\n")
 			os.Exit(1)
 		}
-		//os.Exit(1)
+
 		log.Fatalf("Command failed: %v\n", err)
 	}
 
-	//fmt.Printf("\nFinal state after command execution: %+v\n", appState.Config)
 }

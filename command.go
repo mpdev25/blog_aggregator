@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -99,15 +100,7 @@ func (c *Commands) Register(name string, f func(*State, Command) error) {
 }
 
 func Agg(s *State, cmd Command) error {
-	//resp, err := http.Get("https://www.wagslane.dev/index.xml")
-	//	resp, err := http.Get("https://news.ycombinator.com/rss")
-	//	if err != nil {
-	//		return fmt.Errorf("unable to retrieve url %v\n", err)
-	//	}
 
-	//	defer resp.Body.Close()
-	//	body, _ := io.ReadAll(resp.Body)
-	//	fmt.Println(string(body))
 	if len(cmd.Args) < 1 || len(cmd.Args) > 2 {
 		return fmt.Errorf("usage: %s <time_between_reqs>", cmd.Name)
 	}
@@ -117,9 +110,12 @@ func Agg(s *State, cmd Command) error {
 	}
 	fmt.Printf("Collecting feeds every %s ...\n", time_between_reqs)
 	ticker := time.NewTicker(time_between_reqs)
-	//scrapeFeeds(s)
+
 	for ; ; <-ticker.C {
-		scrapeFeeds(s)
+		err := scrapeFeeds(s)
+		if err != nil {
+			log.Printf("Scraper error: %v", err)
+		}
 	}
 
 }
@@ -215,7 +211,7 @@ func following(s *State, cmd Command) error {
 		return fmt.Errorf("you must be logged in to follow a feed")
 	}
 
-	follows, err := s.db.GetFeedFollowsForUser(context.Background(), s.Config.CurrentUserName) //user.ID.String())
+	follows, err := s.db.GetFeedFollowsForUser(context.Background(), s.Config.CurrentUserName)
 	if err != nil {
 		return fmt.Errorf("could not retrieve feeds: %w", err)
 	}
@@ -255,26 +251,50 @@ func unfollow(s *State, cmd Command) error {
 }
 
 func scrapeFeeds(s *State) error {
-	feed, err := s.db.GetNextFeedToFetch(context.Background())
+	nextFeed, err := s.db.GetNextFeedToFetch(context.Background())
 	if err != nil {
 		return fmt.Errorf("could not find next feed: %w", err)
 	}
-	_, err = s.db.MarkFeedFetched(context.Background(), feed.ID)
-	if err != nil {
-		return fmt.Errorf("could not mark feed as fetched: %w", err)
-	}
+	log.Printf("Found a feed to fetch: %s", nextFeed.Url)
+	return ScrapeFeed(s.db, database.Feed{
+		ID:     nextFeed.ID,
+		Url:    nextFeed.Url,
+		Name:   nextFeed.Name,
+		UserID: nextFeed.UserID,
+	})
 
+}
+func ScrapeFeed(db *database.Queries, feed database.Feed) error {
 	feedData, err := fetchFeed(context.Background(), feed.Url)
 
 	if err != nil {
 		return fmt.Errorf("could not parse feed %s: %w", feed.Url, err)
 	}
+
+	_, err = db.MarkFeedFetched(context.Background(), feed.ID)
+	if err != nil {
+		return fmt.Errorf("could not mark feed as fetched: %w", err)
+	}
+
 	for _, item := range feedData.Channel.Item {
-		publishedAt, _ := time.Parse(time.RFC1123Z, item.PubDate)
-		_, err := s.db.CreatePost(context.Background(), database.CreatePostParams{
+		description := item.Description
+
+		parsedTime, err := time.Parse(time.RFC1123Z, item.PubDate)
+		if err != nil {
+			parsedTime, err = time.Parse(time.RFC1123, item.PubDate)
+		}
+		publishedAt := sql.NullTime{}
+		if err == nil {
+			publishedAt = sql.NullTime{
+				Time:  parsedTime,
+				Valid: true,
+			}
+		}
+		_, err = db.CreatePost(context.Background(), database.CreatePostParams{
 			ID:        uuid.New(),
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
+
 			Title: sql.NullString{
 				String: item.Title,
 				Valid:  item.Title != "",
@@ -282,13 +302,11 @@ func scrapeFeeds(s *State) error {
 			Url: item.Link,
 
 			Description: sql.NullString{
-				String: item.Description,
-				Valid:  item.Description != "",
+				String: description,
+				Valid:  description != "",
 			},
-			PublishedAt: sql.NullTime{
-				Time:  publishedAt,
-				Valid: !publishedAt.IsZero(),
-			},
+			PublishedAt: publishedAt,
+
 			FeedID: feed.ID,
 		})
 		if err != nil {
@@ -297,9 +315,48 @@ func scrapeFeeds(s *State) error {
 			}
 			log.Printf("Database error saving post: %v", err)
 		}
-		fmt.Printf("Description: %s", item.Description)
+
 	}
 
+	return nil
+}
+
+func browse(s *State, cmd Command) error {
+	limit := 2
+	if len(cmd.Args) > 0 {
+		parsedLimit, err := strconv.Atoi(cmd.Args[0])
+		if err != nil {
+			return fmt.Errorf("invalid limit: %w", err)
+		}
+		limit = parsedLimit
+	}
+	user, err := s.db.GetUser(context.Background(), s.Config.CurrentUserName)
+	if err != nil {
+		return fmt.Errorf("could not find user: %w", err)
+	}
+
+	posts, err := s.db.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		return fmt.Errorf("could not fetch posts: %w", err)
+	}
+	if len(posts) == 0 {
+		fmt.Println("No posts found for this user")
+		return nil
+	}
+	for _, post := range posts {
+
+		fmt.Printf("---%v---\n", post.Title.String)
+		fmt.Printf("Link:  %s\n", post.Url)
+		fmt.Printf("Content: %v\n\n", post.Description.String)
+		if post.PublishedAt.Valid {
+			fmt.Printf("Published at: %v\n", post.PublishedAt.Time)
+		} else {
+			fmt.Println("Published at: unknown")
+		}
+	}
 	return nil
 }
 

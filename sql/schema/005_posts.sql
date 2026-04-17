@@ -15,6 +15,6 @@ CREATE TABLE posts (
 );
 
 AlTER TABLE posts ALTER COLUMN title DROP NOT NULL;
-
+ALTER TABLE posts DROP CONSTRAINT posts_title_key;
 -- +goose Down
 DROP TABLE posts;
